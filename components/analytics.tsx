@@ -67,7 +67,7 @@ export const useAnalytics = () => {
     }
   };
 
-  const trackCTAClick = (ctaType: "trial" | "demo" | "docs", location: string) => {
+  const trackCTAClick = (ctaType: "trial" | "demo" | "docs" | "signin", location: string) => {
     trackEvent({
       action: "click",
       category: "cta",
