@@ -1,10 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useAnalytics } from "@/components/analytics";
 
 export default function Home() {
-  const { trackCTAClick, trackEvent } = useAnalytics();
+  const { trackCTAClick, trackEvent, trackScrollDepth } = useAnalytics();
 
   const handleTrialClick = () => {
     trackCTAClick("trial", "hero");
@@ -31,8 +32,175 @@ export default function Home() {
       label: feature,
     });
   };
+
+  const handleTestimonialClick = (company: string) => {
+    trackEvent({
+      action: "click",
+      category: "testimonial",
+      label: company,
+    });
+  };
+
+  const handleLogoClick = (company: string) => {
+    trackEvent({
+      action: "click",
+      category: "logo",
+      label: company,
+    });
+  };
+
+  // Scroll progress tracking
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [activeSection, setActiveSection] = useState('hero');
+
+  // A/B Testing Configuration
+  const [abTestVariants, setAbTestVariants] = useState({
+    heroHeadline: 'A', // A: "Publish World-Class API Docs", B: "Generate Beautiful API Documentation"
+    ctaColor: 'blue', // blue, green, purple
+    featureOrder: 'original', // original, reversed
+    socialProofPosition: 'before' // before, after demo
+  });
+
+  useEffect(() => {
+    // Simple A/B test assignment based on user session
+    const assignVariant = () => {
+      const sessionId = sessionStorage.getItem('ab_test_session') || Math.random().toString(36).substr(2, 9);
+      sessionStorage.setItem('ab_test_session', sessionId);
+
+      // Use session hash for consistent variant assignment
+      const hash = sessionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+
+      setAbTestVariants({
+        heroHeadline: hash % 2 === 0 ? 'A' : 'B',
+        ctaColor: ['blue', 'green', 'purple'][hash % 3],
+        featureOrder: hash % 2 === 0 ? 'original' : 'reversed',
+        socialProofPosition: hash % 2 === 0 ? 'before' : 'after'
+      });
+
+      // Track A/B test assignment
+      trackEvent({
+        action: 'assigned',
+        category: 'ab_test',
+        label: `session_${sessionId}`,
+      });
+    };
+
+    assignVariant();
+  }, []);
+
+  // A/B Test tracking functions
+  const trackABTestConversion = (type: 'trial' | 'demo' | 'docs', variant: string, element: string) => {
+    trackEvent({
+      action: 'conversion',
+      category: 'ab_test',
+      label: `${type}_${variant}_${element}`,
+    });
+  };
+
+  const getCTAColor = () => {
+    const colors = {
+      blue: 'bg-blue-600 hover:bg-blue-700',
+      green: 'bg-green-600 hover:bg-green-700',
+      purple: 'bg-purple-600 hover:bg-purple-700'
+    };
+    return colors[abTestVariants.ctaColor as keyof typeof colors];
+  };
+
+  const getHeroHeadline = () => {
+    const headlines = {
+      A: "Publish World-Class API Docs In Days, Not Weeks",
+      B: "Generate Beautiful API Documentation 80% Faster"
+    };
+    return headlines[abTestVariants.heroHeadline as keyof typeof headlines];
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = (window.scrollY / totalHeight) * 100;
+      setScrollProgress(Math.min(100, Math.max(0, progress)));
+
+      // Track scroll depth
+      if (progress > 25 && progress < 26) {
+        trackScrollDepth(25);
+      } else if (progress > 50 && progress < 51) {
+        trackScrollDepth(50);
+      } else if (progress > 75 && progress < 76) {
+        trackScrollDepth(75);
+      } else if (progress > 90 && progress < 91) {
+        trackScrollDepth(100);
+      }
+
+      // Update active section based on scroll position
+      const sections = ['hero', 'product', 'social-proof', 'interactive-demo', 'conversion'];
+      const currentSection = sections.find(section => {
+        const element = document.getElementById(section);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          return rect.top <= 100 && rect.bottom >= 100;
+        }
+        return false;
+      }) || 'hero';
+
+      setActiveSection(currentSection);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Initial call
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-black dark:to-gray-900">
+      {/* Scroll Progress Bar */}
+      <div className="fixed top-0 left-0 w-full h-1 bg-gray-200 dark:bg-gray-700 z-50">
+        <div
+          className="h-full bg-gradient-to-r from-blue-600 to-purple-600 transition-all duration-300 ease-out"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
+      {/* Progress Navigation */}
+      <div className="fixed top-4 left-4 z-40 hidden lg:block">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">Progress</div>
+          <div className="space-y-2">
+            {[
+              { id: 'hero', label: 'Home', icon: '🏠' },
+              { id: 'product', label: 'Features', icon: '⚡' },
+              { id: 'social-proof', label: 'Trust', icon: '🛡️' },
+              { id: 'interactive-demo', label: 'Demo', icon: '🎮' },
+              { id: 'conversion', label: 'Start', icon: '🚀' },
+            ].map((section) => (
+              <button
+                key={section.id}
+                onClick={() => {
+                  document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth' });
+                  trackEvent({
+                    action: 'click',
+                    category: 'navigation',
+                    label: `progress_nav_${section.id}`,
+                  });
+                }}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-200 flex items-center gap-2 ${
+                  activeSection === section.id
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <span className="text-base">{section.icon}</span>
+                <span>{section.label}</span>
+                {activeSection === section.id && (
+                  <svg className="w-4 h-4 ml-auto text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Skip to content for accessibility */}
       <a
         href="#main-content"
@@ -111,11 +279,26 @@ export default function Home() {
               </div>
 
               {/* Main Headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 dark:text-white mb-6 leading-tight">
-                Publish World-Class API Docs
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 block">
-                  In Days, Not Weeks
-                </span>
+              <h1
+                className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold text-gray-900 dark:text-white mb-6 leading-tight"
+                data-ab-test="headline"
+                data-variant={abTestVariants.heroHeadline}
+              >
+                {abTestVariants.heroHeadline === 'A' ? (
+                  <>
+                    Publish World-Class API Docs
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 block">
+                      In Days, Not Weeks
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Generate Beautiful API Documentation
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-blue-600 dark:from-green-400 dark:to-blue-400 block">
+                      80% Faster
+                    </span>
+                  </>
+                )}
               </h1>
 
               {/* Value Proposition */}
@@ -145,8 +328,13 @@ export default function Home() {
               {/* Primary CTAs */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
                 <button
-                  onClick={handleTrialClick}
-                  className="group relative bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl text-lg font-semibold min-w-[240px] transition-all duration-200 transform hover:scale-105 hover:shadow-xl"
+                  onClick={() => {
+                    handleTrialClick();
+                    trackABTestConversion('trial', abTestVariants.ctaColor, 'hero_primary');
+                  }}
+                  className={`group relative ${getCTAColor()} text-white px-8 py-4 rounded-xl text-lg font-semibold min-w-[240px] transition-all duration-200 transform hover:scale-105 hover:shadow-xl`}
+                  data-ab-test="cta_color"
+                  data-variant={abTestVariants.ctaColor}
                 >
                   <span className="relative z-10">Start Free Trial</span>
                   <span className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></span>
@@ -556,19 +744,585 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Placeholder sections for future milestones */}
-        <section id="social-proof" className="py-20 text-center">
-          <p className="text-gray-600 dark:text-gray-300 italic">
-            [Social proof section coming in Milestone 4]
-          </p>
+        {/* Social Proof & Trust Signals - Milestone 4 Implementation */}
+        <section id="social-proof" className="py-20 bg-white dark:bg-black">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Section Header */}
+            <div className="text-center mb-16">
+              <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-4 py-2 rounded-full text-sm font-medium mb-6">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Trusted by Industry Leaders
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-6">
+                Join the Teams Building
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-blue-600 dark:from-green-400 dark:to-blue-400 block">
+                  World-Class API Documentation
+                </span>
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
+                From startups to enterprises, teams trust Apilon to deliver exceptional developer experiences.
+                <span className="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                  See why 10,000+ developers choose our platform.
+                </span>
+              </p>
+            </div>
+
+            {/* Customer Logos */}
+            <div className="mb-20">
+              <div className="text-center mb-12">
+                <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+                  Loved by Teams Everywhere
+                </h3>
+                <p className="text-gray-600 dark:text-gray-300">
+                  From startups to Fortune 500 companies
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 items-center justify-center">
+                {/* Logo 1 - Stripe */}
+                <div
+                  onClick={() => handleLogoClick("stripe")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-gradient-to-r from-blue-600 to-blue-500 rounded flex items-center justify-center text-white font-bold text-sm group-hover:scale-110 transition-transform duration-300">
+                      Stripe
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+
+                {/* Logo 2 - Vercel */}
+                <div
+                  onClick={() => handleLogoClick("vercel")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-black dark:bg-white rounded flex items-center justify-center font-bold text-sm group-hover:scale-110 transition-transform duration-300">
+                      Vercel
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+
+                {/* Logo 3 - GitHub */}
+                <div
+                  onClick={() => handleLogoClick("github")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-gray-900 dark:bg-white rounded flex items-center justify-center font-mono text-sm group-hover:scale-110 transition-transform duration-300">
+                      GitHub
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+
+                {/* Logo 4 - Discord */}
+                <div
+                  onClick={() => handleLogoClick("discord")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-indigo-600 rounded flex items-center justify-center text-white font-bold text-sm group-hover:scale-110 transition-transform duration-300">
+                      Discord
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+
+                {/* Logo 5 - Shopify */}
+                <div
+                  onClick={() => handleLogoClick("shopify")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-green-600 rounded flex items-center justify-center text-white font-bold text-sm group-hover:scale-110 transition-transform duration-300">
+                      Shopify
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+
+                {/* Logo 6 - Twilio */}
+                <div
+                  onClick={() => handleLogoClick("twilio")}
+                  className="group relative flex items-center justify-center p-4 cursor-pointer transition-all duration-300"
+                >
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 group-hover:bg-white dark:group-hover:bg-gray-700 transition-colors duration-300">
+                    <div className="w-32 h-8 bg-red-600 rounded flex items-center justify-center text-white font-bold text-sm group-hover:scale-110 transition-transform duration-300">
+                      Twilio
+                    </div>
+                  </div>
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonials */}
+            <div className="mb-20">
+              <div className="text-center mb-12">
+                <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                  What Our Users Say
+                </h3>
+                <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                  Real stories from teams transforming their API documentation
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-8">
+                {/* Testimonial 1 */}
+                <div
+                  onClick={() => handleTestimonialClick("airbnb")}
+                  className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 cursor-pointer"
+                >
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">
+                      AD
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">Alex Davidson</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Senior Developer, Airbnb</p>
+                    </div>
+                  </div>
+                  <div className="flex mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588.419l-2.8-2.034a1 1 0 00-1.175-.492v1.056c0 .477.23.938.658 1.291l-2.77 2.77a1 1 0 00-1.414 1.414l2.77-2.77a1 1 0 001.414 0l2.77 2.77a1 1 0 001.414-1.414l-2.77-2.77a1 1 0 00-1.414 0l-2.77 2.77a1 1 0 01-1.414-1.414l2.77-2.77z" />
+                      </svg>
+                    ))}
+                  </div>
+                  <blockquote className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                    "Apilon transformed our API documentation process completely. What used to take weeks now takes hours, and the quality is outstanding. Our developers love the interactive examples and search functionality."
+                  </blockquote>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span>Reduced documentation time by 80%</span>
+                  </div>
+                </div>
+
+                {/* Testimonial 2 */}
+                <div
+                  onClick={() => handleTestimonialClick("spotify")}
+                  className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 hover:border-green-300 dark:hover:border-green-600 transition-all duration-300 cursor-pointer"
+                >
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-bold">
+                      SC
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">Sarah Chen</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">API Lead, Spotify</p>
+                    </div>
+                  </div>
+                  <div className="flex mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588.419l-2.8-2.034a1 1 0 00-1.175-.492v1.056c0 .477.23.938.658 1.291l-2.77 2.77a1 1 0 00-1.414 1.414l2.77-2.77a1 1 0 001.414 0l2.77 2.77a1 1 0 001.414-1.414l-2.77-2.77a1 1 0 00-1.414 0l-2.77 2.77a1 1 0 01-1.414-1.414l2.77-2.77z" />
+                      </svg>
+                    ))}
+                  </div>
+                  <blockquote className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                    "The collaboration features are game-changing. Our entire team can review and contribute to documentation in real-time. The version control integration with Git makes keeping everything up to date effortless."
+                  </blockquote>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span>Improved team collaboration by 60%</span>
+                  </div>
+                </div>
+
+                {/* Testimonial 3 */}
+                <div
+                  onClick={() => handleTestimonialClick("netflix")}
+                  className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 hover:border-purple-300 dark:hover:border-purple-600 transition-all duration-300 cursor-pointer"
+                >
+                  <div className="flex items-start gap-4 mb-6">
+                    <div className="w-12 h-12 bg-gradient-to-br from-red-600 to-red-700 rounded-full flex items-center justify-center text-white font-bold">
+                      MK
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">Michael Kim</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Senior Engineer, Netflix</p>
+                    </div>
+                  </div>
+                  <div className="flex mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588.419l-2.8-2.034a1 1 0 00-1.175-.492v1.056c0 .477.23.938.658 1.291l-2.77 2.77a1 1 0 00-1.414 1.414l2.77-2.77a1 1 0 001.414 0l2.77 2.77a1 1 0 001.414-1.414l-2.77-2.77a1 1 0 00-1.414 0l-2.77 2.77a1 1 0 01-1.414-1.414l2.77-2.77z" />
+                      </svg>
+                    ))}
+                  </div>
+                  <blockquote className="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                    "The automatic changelog generation and version management has saved us countless hours. Our developers can now focus on building features instead of maintaining documentation. It's been a huge productivity boost."
+                  </blockquote>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span>5x faster release documentation</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Outcome Metrics & Security Badges */}
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 rounded-3xl p-12">
+              <div className="grid md:grid-cols-2 gap-12 items-center">
+                {/* Left Side - Outcome Metrics */}
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">
+                    Proven Results
+                  </h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">5x</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Faster Documentation</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">80%</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Time Saved</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">99.9%</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Uptime SLA</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-2">10K+</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Happy Developers</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Side - Security & Compliance */}
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">
+                    Enterprise Security
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-700 rounded-xl">
+                      <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                        <span className="text-lg">🛡️</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-white mb-1">SOC 2 Type II</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Compliant & Audit-Ready</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-700 rounded-xl">
+                      <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                        <span className="text-lg">🔐</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-white mb-1">GDPR Ready</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Data Protection</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-700 rounded-xl">
+                      <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                        <span className="text-lg">🔒</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-white mb-1">ISO 27001</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Security Management</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-700 rounded-xl">
+                      <div className="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg flex items-center justify-center">
+                        <span className="text-lg">📊</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900 dark:text-white mb-1">End-to-End Encryption</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">256-bit TLS</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trust Center Link */}
+              <div className="mt-8 text-center">
+                <button className="group inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors">
+                  <span>View Security & Trust Center</span>
+                  <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section id="interactive-demo" className="py-20 text-center">
-          <p className="text-gray-600 dark:text-gray-300 italic">
-            [Interactive demo and code snippets coming in Milestone 5]
-          </p>
+        {/* Interactive Demo & Code Examples */}
+        <section id="interactive-demo" className="py-20 bg-gradient-to-b from-white to-gray-50 dark:from-black dark:to-gray-900">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Section Header */}
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-full text-sm font-medium mb-6">
+                <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                Try It Now
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                See Apilon in Action
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+                Experience the power of automated API documentation with our live, interactive demo.
+                Switch between languages, copy code, and see real-time results.
+              </p>
+            </div>
+
+            {/* Interactive Demo Area */}
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {/* Demo Controls */}
+              <div className="border-b border-gray-200 dark:border-gray-700 p-6 bg-gray-50 dark:bg-gray-900">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">API Endpoint:</label>
+                    <select className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      <option value="petstore">Swagger Petstore</option>
+                      <option value="github">GitHub API</option>
+                      <option value="openai">OpenAI API</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                      Generate Docs
+                    </button>
+                    <button className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-medium">
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Code Example Tabs */}
+              <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                <div className="flex items-center gap-1 p-2">
+                  <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 rounded-lg transition-colors">
+                    cURL
+                  </button>
+                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    JavaScript
+                  </button>
+                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    Python
+                  </button>
+                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                    Ruby
+                  </button>
+                </div>
+              </div>
+
+              {/* Code Display Area */}
+              <div className="relative bg-gray-900 dark:bg-black">
+                <div className="absolute top-4 right-4 flex gap-2">
+                  <button
+                    onClick={() => navigator.clipboard.writeText('curl -X GET "https://api.example.com/pets" -H "accept: application/json"')}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                    title="Copy code"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                  <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors" title="Copy link">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </button>
+                </div>
+                <pre className="p-6 text-green-400 font-mono text-sm overflow-x-auto">
+                  <code>{`curl -X GET "https://petstore.swagger.io/v2/pet/findByStatus?status=available" \\
+  -H "accept: application/json" \\
+  -H "api_key: special-key"
+
+# Response
+{
+  "id": 123,
+  "name": "doggie",
+  "category": {
+    "id": 1,
+    "name": "Dogs"
+  },
+  "photoUrls": ["https://example.com/photo.jpg"],
+  "tags": [{"id": 1, "name": "friendly"}],
+  "status": "available"
+}`}</code>
+                </pre>
+              </div>
+
+              {/* Generated Documentation Preview */}
+              <div className="p-6 bg-gray-50 dark:bg-gray-900">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Generated Documentation</h3>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Generated in 0.8s</span>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium text-gray-900 dark:text-white mb-2">GET /pet/findByStatus</h4>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm">Finds Pets by status</p>
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Parameters</h5>
+                      <div className="bg-gray-50 dark:bg-gray-900 rounded p-3">
+                        <code className="text-sm">status</code>
+                        <span className="text-gray-600 dark:text-gray-400 ml-2">Status values to be considered for filter</span>
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Response</h5>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        Returns array of Pet objects with id, name, category, and status
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feature Cards */}
+            <div className="grid md:grid-cols-3 gap-6 mt-12">
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-lg">
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-2xl">⚡</span>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Lightning Fast</h3>
+                <p className="text-gray-600 dark:text-gray-300 text-sm">Generate comprehensive documentation in under 1 second from any OpenAPI spec</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-lg">
+                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-2xl">🎨</span>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Customizable Themes</h3>
+                <p className="text-gray-600 dark:text-gray-300 text-sm">Match your brand with customizable colors, logos, and styling options</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 hover:shadow-lg">
+                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-2xl">🚀</span>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Deploy Anywhere</h3>
+                <p className="text-gray-600 dark:text-gray-300 text-sm">Host on your domain or use our cloud infrastructure with one-click deployment</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Conversion Section */}
+        <section id="conversion" className="py-20 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <div className="max-w-4xl mx-auto">
+              <h2 className="text-4xl font-bold mb-6">
+                Ready to Transform Your API Documentation?
+              </h2>
+              <p className="text-xl mb-8 text-blue-100">
+                Join thousands of developers who save 80% of their documentation time with Apilon.
+              </p>
+
+              <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+                  <div className="text-6xl font-bold mb-2">80%</div>
+                  <div className="text-lg mb-4">Time Saved on Documentation</div>
+                  <div className="text-sm text-blue-100">Focus on building great APIs, not writing docs</div>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+                  <div className="text-6xl font-bold mb-2">5min</div>
+                  <div className="text-lg mb-4">Setup Time</div>
+                  <div className="text-sm text-blue-100">Go from OpenAPI spec to published docs in minutes</div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <button
+                  onClick={() => trackCTAClick('trial', 'conversion_hero')}
+                  className="group px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-blue-50 transition-all duration-300 transform hover:scale-105 hover:shadow-xl text-lg"
+                >
+                  Start Free Trial
+                  <svg className="w-5 h-5 ml-2 inline-block transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => trackCTAClick('demo', 'conversion_hero')}
+                  className="group px-8 py-4 bg-white/10 backdrop-blur-sm border-2 border-white text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-300 text-lg"
+                >
+                  Book a Demo
+                  <svg className="w-5 h-5 ml-2 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-8 flex flex-wrap justify-center gap-8 text-sm text-blue-100">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  No credit card required
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  14-day free trial
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Cancel anytime
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
+
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        {/* Quick Demo Button */}
+        <button
+          onClick={() => {
+            trackCTAClick('demo', 'floating_button');
+            document.getElementById('interactive-demo')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="group w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center"
+          title="Try Live Demo"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="absolute right-full mr-3 bg-gray-900 text-white px-3 py-1 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+            Try Live Demo
+          </span>
+        </button>
+
+        {/* Chat/Help Button */}
+        <button
+          onClick={() => trackCTAClick('docs', 'floating_button')}
+          className="group w-14 h-14 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center"
+          title="Get Help"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span className="absolute right-full mr-3 bg-gray-900 text-white px-3 py-1 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+            Chat with us
+          </span>
+        </button>
+
+        {/* Primary CTA Button */}
+        <button
+          onClick={() => trackCTAClick('trial', 'floating_button')}
+          className="group w-14 h-14 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center animate-pulse"
+          title="Start Free Trial"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <span className="absolute right-full mr-3 bg-gray-900 text-white px-3 py-1 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+            Start Free Trial
+          </span>
+        </button>
+      </div>
 
       {/* Footer */}
       <footer className="bg-white dark:bg-black border-t border-gray-200 dark:border-gray-800 py-12">
